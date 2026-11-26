@@ -28,6 +28,15 @@ include(":app") // androidApp
 include(":desktopApp")
 include("shared")
 
+// Tubular: build the SponsorBlock/ReturnYouTubeDislike-enabled extractor from source,
+// so no JitPack artifact is needed.
+includeBuild("TubularExtractor") {
+    dependencySubstitution {
+        substitute(module("com.github.polymorphicshade:TubularExtractor"))
+            .using(project(":extractor"))
+    }
+}
+
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.
 // We assume, that NewPipe and NewPipe Extractor have the same parent directory.
 // If this is not the case, please change the path in includeBuild().
