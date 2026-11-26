@@ -1,0 +1,72 @@
+name: Build Tubular APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master, update-0.29.3 ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Build release APK (unsigned)
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Get or create signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > tubular.jks
+            echo "KS_PASS=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "NEW_KEY=false" >> "$GITHUB_ENV"
+          else
+            PASS="$(openssl rand -hex 16)"
+            keytool -genkeypair -keystore tubular.jks -storepass "$PASS" -keypass "$PASS" \
+              -alias tubular -keyalg RSA -keysize 4096 -validity 36500 \
+              -dname "CN=Tubular personal build"
+            echo "::add-mask::$PASS"
+            echo "KS_PASS=$PASS" >> "$GITHUB_ENV"
+            echo "NEW_KEY=true" >> "$GITHUB_ENV"
+            mkdir -p new-key
+            base64 -w0 tubular.jks > new-key/KEYSTORE_BASE64.txt
+            printf '%s' "$PASS" > new-key/KEYSTORE_PASSWORD.txt
+          fi
+
+      - name: Sign APK
+        run: |
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          VERSION_NAME="$(jq -r '.elements[0].versionName' app/build/outputs/apk/release/output-metadata.json)"
+          IN="$(ls app/build/outputs/apk/release/*.apk | head -1)"
+          "$BT/zipalign" -f -p 4 "$IN" aligned.apk
+          mkdir -p out
+          "$BT/apksigner" sign --ks tubular.jks --ks-key-alias tubular \
+            --ks-pass env:KS_PASS --key-pass env:KS_PASS \
+            --out "out/Tubular_v${VERSION_NAME}.apk" aligned.apk
+          "$BT/apksigner" verify --print-certs "out/Tubular_v${VERSION_NAME}.apk"
+          echo "Built Tubular v${VERSION_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$NEW_KEY" = "true" ]; then
+            echo "**New signing key created.** Download the 'signing-key' artifact and save both files as repo secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD) so future builds can update this install." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Tubular-apk
+          path: out/*.apk
+
+      - if: env.NEW_KEY == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: signing-key
+          path: new-key/
+          retention-days: 3
