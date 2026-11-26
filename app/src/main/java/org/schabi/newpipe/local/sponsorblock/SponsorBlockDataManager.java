@@ -4,14 +4,12 @@ import android.content.Context;
 
 import org.schabi.newpipe.NewPipeDatabase;
 import org.schabi.newpipe.database.AppDatabase;
-import org.schabi.newpipe.database.sponsorblock.dao.SponsorBlockWhitelistDAO;
 
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
 
 public class SponsorBlockDataManager {
-    private final SponsorBlockWhitelistDAO sponsorBlockWhitelistTable = null;
 
     public SponsorBlockDataManager(final Context context) {
         final AppDatabase database = NewPipeDatabase.getInstance(context);
